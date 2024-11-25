@@ -14,17 +14,24 @@ class MyClassifier:
         self.b = None
         self.lamb = 0.1  # regularization parameter
         print('MyClassifier initialized')
-        
+    
+    def unique_labels(self, trueY):
+        self.uniqueL = np.unique(trueY)
+
+    def align_labels(self, trueY):
+        return np.array([np.where(self.uniqueL == y)[0][0] for y in trueY])
 
     
     def train(self, trainX, trainY):
         ''' Task 1-2 
             TODO: train classifier using LP(s) and updated parameters needed in your algorithm 
         '''
+        self.unique_labels(trainY)
+        trainY = self.align_labels(trainY)
         n, d = trainX.shape
         self.w = [cp.Variable(d) for _ in range(self.K)]
         self.b = [cp.Variable() for _ in range(self.K)]
-        eps = [cp.Variable(n, nonneg=True) for _ in range(self.K)]
+        eps = [cp.Variable(n) for _ in range(self.K)]
 
         constraints = []
         loss = 0
@@ -32,14 +39,15 @@ class MyClassifier:
             t = np.where(trainY == k, 1, -1)
             for i in range(n):
                 constraints.append(t[i] * (self.w[k] @ trainX[i] + self.b[k]) >= 1 - eps[k][i])
+                constraints.append(eps[k][i] >= 0)
                 loss += eps[k][i]
-        # try to to use L1 regularization
+                
         # Add L1 regularization term
         for k in range(self.K):
-            loss += self.lamb * cp.norm(self.w[k], 1)
+            loss += self.lamb * cp.norm(self.w[k], 2)
 
         problem = cp.Problem(cp.Minimize(loss), constraints)
-        problem.solve(verbose=True,solver=cp.ECOS)
+        problem.solve(verbose=False)
         self.w = [w.value for w in self.w]
         self.b = [b.value for b in self.b]
 
@@ -60,6 +68,7 @@ class MyClassifier:
     
 
     def evaluate(self, testX, testY):
+        testY = self.align_labels(testY)
         predY = self.predict(testX)
         accuracy = accuracy_score(testY, predY)
 
