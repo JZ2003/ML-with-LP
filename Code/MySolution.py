@@ -101,13 +101,14 @@ class MyClustering:
             constraints = []
             _trainX = trainX[:, None, :] # (n, 1, d)
             XMinusCentroids = _trainX - centroids # (n, K, d)
-            distances = cp.norm(XMinusCentroids, axis=2) # (n, K)
+            distances = np.linalg.norm(XMinusCentroids, axis=2, ord=1) # (n, K)
+            
             loss = cp.sum(cp.multiply(x, distances))
 
             constraints.append(cp.sum(x, axis=1) == 1) # each data point belongs to one cluster
             constraints.extend([x >= 0, x <= 1]) # ensure x is binary
             problem = cp.Problem(cp.Minimize(loss), constraints)
-            problem.solve(solver=cp.GUROBI, verbose=True)
+            problem.solve(solver=cp.GLPK_MI)
 
             x = x.value # (n, K)
             self.labels = np.argmax(x, axis=1) # (n,)
@@ -161,6 +162,7 @@ class MyClustering:
     def get_class_cluster_reference(self, cluster_labels, true_labels):
         ''' assign a class label to each cluster using majority vote '''
         label_reference = {}
+        true_labels = true_labels.astype(int)
         for i in range(len(np.unique(cluster_labels))):
             index = np.where(cluster_labels == i,1,0)
             num = np.bincount(true_labels[index==1]).argmax()
@@ -216,17 +218,41 @@ class MyFeatureSelection:
     
 
 
-from utils import prepare_mnist_data
+from utils import prepare_mnist_data, prepare_synthetic_data
 def main():
-    data = prepare_mnist_data()
-    trainX, trainY, testX, testY = data['trainX'], data['trainY'], data['testX'], data['testY']
-    K = len(np.unique(trainY))
-    classifier = MyClassifier(K)
-    classifier.train(trainX, trainY)
-    testAcc = classifier.evaluate(testX, testY)
-    trainAcc = classifier.evaluate(trainX, trainY)
-    print(f'Training Accuracy: {trainAcc:.4f}')
-    print(f'Test Accuracy: {testAcc:.4f}')
+    # data = prepare_mnist_data()
+    # trainX, trainY, testX, testY = data['trainX'], data['trainY'], data['testX'], data['testY']
+    # K = len(np.unique(trainY))
+    # classifier = MyClassifier(K)
+    # classifier.train(trainX, trainY)
+    # testAcc = classifier.evaluate(testX, testY)
+    # trainAcc = classifier.evaluate(trainX, trainY)
+    # print(f'Training Accuracy: {trainAcc:.4f}')
+    # print(f'Test Accuracy: {testAcc:.4f}')
 
+
+    result2 = {'synthetic':{'K':[3, 5, 10], 'clustering_nmi':[0.6,0.6,0.6], 'classification_accuracy':[0.8,0.8,0.8]},
+                'mnist':{'K':[3, 10, 32], 'clustering_nmi':[0.5,0.5,0.5], 'classification_accuracy':[0.7,0.7,0.7]}}
+    syn_data = prepare_synthetic_data()
+    trainX, trainY, testX, testY = syn_data['trainX'], syn_data['trainY'], syn_data['testX'], syn_data['testY']
+    
+    for i in range(3):
+        k = result2['synthetic']['K'][i]
+        synClustering = MyClustering(k)
+        synClustering.train(trainX)
+        result2['synthetic']['clustering_nmi'][i] = synClustering.evaluate_clustering(trainY)
+        result2['synthetic']['classification_accuracy'][i] = synClustering.evaluate_classification(trainY, testX, testY)
+
+
+    mnist_data = prepare_mnist_data()
+    trainX, trainY, testX, testY = mnist_data['trainX'], mnist_data['trainY'], mnist_data['testX'], mnist_data['testY']
+    for i in range(3):
+        k = result2['mnist']['K'][i]
+        mnistClustering = MyClustering(k)
+        mnistClustering.train(trainX)
+        result2['mnist']['clustering_nmi'][i] = mnistClustering.evaluate_clustering(trainY)
+        result2['mnist']['classification_accuracy'][i] = mnistClustering.evaluate_classification(trainY, testX, testY)
+
+    print(result2)
 if __name__ == '__main__':
     main()
