@@ -12,16 +12,15 @@ class MyClassifier:
         # examples:
         self.w = None
         self.b = None
-        self.lamb = 0.1  # regularization parameter
-        print('MyClassifier initialized')
+        self.lamb = 0.01  # regularization parameter
     
     def unique_labels(self, trueY):
-        self.uniqueL = np.unique(trueY)
+        self.uniqueL = np.sort(np.unique(trueY))
 
     def align_labels(self, trueY):
-        return np.array([np.where(self.uniqueL == y)[0][0] for y in trueY])
-
-    
+        res = np.array([np.where(self.uniqueL == y)[0][0] for y in trueY])
+        return res
+        
     def train(self, trainX, trainY):
         ''' Task 1-2 
             TODO: train classifier using LP(s) and updated parameters needed in your algorithm 
@@ -32,6 +31,7 @@ class MyClassifier:
         self.w = [cp.Variable(d) for _ in range(self.K)]
         self.b = [cp.Variable() for _ in range(self.K)]
         eps = [cp.Variable(n) for _ in range(self.K)]
+        delta = [cp.Variable() for _ in range(self.K)]
 
         constraints = []
         loss = 0
@@ -41,10 +41,11 @@ class MyClassifier:
                 constraints.append(t[i] * (self.w[k] @ trainX[i] + self.b[k]) >= 1 - eps[k][i])
                 constraints.append(eps[k][i] >= 0)
                 loss += eps[k][i]
-                
-        # Add L1 regularization term
-        for k in range(self.K):
-            loss += self.lamb * cp.norm(self.w[k], 2)
+            
+            # L1 Regularization
+            constraints.append(cp.abs(self.w[k]) <= delta[k])
+            loss += self.lamb * delta[k]
+            
 
         problem = cp.Problem(cp.Minimize(loss), constraints)
         problem.solve(verbose=False)
@@ -70,6 +71,7 @@ class MyClassifier:
     def evaluate(self, testX, testY):
         testY = self.align_labels(testY)
         predY = self.predict(testX)
+
         accuracy = accuracy_score(testY, predY)
 
         return accuracy
@@ -81,20 +83,48 @@ class MyClustering:
     def __init__(self, K):
         self.K = K  # number of classes
         self.labels = None
-
-        ### TODO: Initialize other parameters needed in your algorithm
-        # examples: 
-        # self.cluster_centers_ = None
+        self.maxIter= 100
+        self.centroids = None
         
     
     def train(self, trainX):
         ''' Task 2-2 
             TODO: cluster trainX using LP(s) and store the parameters that discribe the identified clusters
         '''
-        
+        n, d = trainX.shape
+        centroids = trainX[np.random.choice(n, self.K, replace=False)] # (K, d)
+        oldCentroids = np.zeros((self.K, d))
+        self.labels = np.zeros(n)
 
+        for iter in range(self.maxIter):
+            x = cp.Variable((n, self.K), integer=True) # (n, K)
+            constraints = []
+            _trainX = trainX[:, None, :] # (n, 1, d)
+            XMinusCentroids = _trainX - centroids # (n, K, d)
+            distances = cp.norm(XMinusCentroids, axis=2) # (n, K)
+            loss = cp.sum(cp.multiply(x, distances))
+
+            constraints.append(cp.sum(x, axis=1) == 1) # each data point belongs to one cluster
+            constraints.extend([x >= 0, x <= 1]) # ensure x is binary
+            problem = cp.Problem(cp.Minimize(loss), constraints)
+            problem.solve(solver=cp.GUROBI, verbose=True)
+
+            x = x.value # (n, K)
+            self.labels = np.argmax(x, axis=1) # (n,)
+            for k in range(self.K):
+                kPoints = trainX[self.labels == k] # (n_k, d)
+                assert len(kPoints) > 0  # each cluster has at least one data point
+                centroids[k] = np.mean(kPoints, axis=0) # (d,)
+            
+            if np.allclose(centroids, oldCentroids, atol=1e-4):
+                print(f'Converged at iteration {iter}')
+                self.centroids = centroids
+                break 
+
+            oldCentroids = centroids.copy()
 
         # Update and teturn the cluster labels of the training data (trainX)
+        self.centroids = centroids
         return self.labels
     
     
@@ -102,6 +132,10 @@ class MyClustering:
         ''' Task 2-2 
             TODO: assign new data points to the existing clusters
         '''
+        testX_ = testX[:, None, :] # (n, 1, d)
+        XMinusCentroids = testX_ - self.centroids # (n, K, d)
+        distances = np.linalg.norm(XMinusCentroids, axis=2) # (n, K)
+        pred_labels = np.argmin(distances, axis=1) # (n,)
 
         # Return the cluster labels of the input data (testX)
         return pred_labels
@@ -180,3 +214,19 @@ class MyFeatureSelection:
         return feat_to_keep
     
     
+
+
+from utils import prepare_mnist_data
+def main():
+    data = prepare_mnist_data()
+    trainX, trainY, testX, testY = data['trainX'], data['trainY'], data['testX'], data['testY']
+    K = len(np.unique(trainY))
+    classifier = MyClassifier(K)
+    classifier.train(trainX, trainY)
+    testAcc = classifier.evaluate(testX, testY)
+    trainAcc = classifier.evaluate(trainX, trainY)
+    print(f'Training Accuracy: {trainAcc:.4f}')
+    print(f'Test Accuracy: {testAcc:.4f}')
+
+if __name__ == '__main__':
+    main()
