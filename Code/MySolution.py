@@ -183,17 +183,90 @@ class MyClustering:
 
 ##########################################################################
 #--- Task 3 (Option 1) ---#
-class MyLabelSelection:
-    def __init__(self, ratio):
-        self.ratio = ratio  # percentage of data to label
-        ### TODO: Initialize other parameters needed in your algorithm
 
-    def select(self, trainX):
-        ''' Task 3-2'''
+
+class MyLabelSelection:
+    def __init__(self, ratio, trainX, trainY, method='random'):
+        self.ratio = ratio  # percentage of data to label
+        self.method = method
+        self.X = trainX
+        self.Y = trainY
+
+
+    def real_data(self):
+        print(f"Labeling data... method: {self.method}")
+        if self.method == "random":
+            X, Y = self.random_method()
+        elif self.method == "random_NN":
+            X, Y = self.random_NN_method()
+
+        print(f"length of used for training: {len(Y)}")
         
+        return X, Y
+    
+    def random_method(self):
+        """
+        Naive approach: randomly select data points to label
+        """
+        data_to_label = self.random_select()
+        return self.X[data_to_label], self.Y[data_to_label]
+    
+    def random_NN_method(self):
+        """
+        Naive approach: randomly select data points to label
+        """
+        n = len(self.Y)
+        data_to_label = self.random_select()
+        unselected = np.setdiff1d(np.arange(n), data_to_label)
+        Y_new = np.copy(self.Y)
+        for i in unselected:
+            dist = np.linalg.norm(self.X[i] - self.X[data_to_label], axis=1)
+            Y_new[i] = self.Y[data_to_label[np.argmin(dist)]]
+
+        accuracy = np.mean(Y_new == self.Y)
+        print(f"Accuracy: {accuracy}")
+        return self.X, Y_new
+
+
+
+    def random_select(self):
+        """
+        Naive approach: randomly select data points to label
+        """
+        n = self.X.shape[0]
+        num_to_label = int(n * self.ratio)
+        data_to_label = np.random.choice(n, num_to_label, replace=False) # size
 
         # Return an index list that specifies which data points to label
         return data_to_label
+    
+    # def real_label_rand(self,trainY, data_to_label):
+    #     """
+    #     For the selected data points, return their true labels.
+    #     For the unselected data points, randomly assign labels.
+    #     """
+    #     n = len(trainY)
+    #     labels = np.unique(trainY)
+    #     res = np.random.choice(labels, n, replace=True)
+    #     res[data_to_label] = trainY[data_to_label]
+    #     return res
+
+    # def real_label_NN(self,trainX,trainY, data_to_label):
+    #     """
+    #     For the selected data points, return their true labels.
+    #     For the unselected data points, return their nearest neighbor's label.
+    #     """
+    #     print(f"labeling... ratio: {self.ratio}")
+    #     n = len(trainY)
+    #     res = np.zeros_like(trainY)
+    #     res[data_to_label] = trainY[data_to_label] # 
+    #     unselected = np.setdiff1d(np.arange(n), data_to_label)
+    #     for i in unselected:
+    #         dist = np.linalg.norm(trainX[i] - trainX[data_to_label], axis=1)
+    #         res[i] = trainY[data_to_label[np.argmin(dist)]]
+        
+
+    #     return res
     
 
 
@@ -220,39 +293,22 @@ class MyFeatureSelection:
 
 from utils import prepare_mnist_data, prepare_synthetic_data
 def main():
-    # data = prepare_mnist_data()
-    # trainX, trainY, testX, testY = data['trainX'], data['trainY'], data['testX'], data['testY']
-    # K = len(np.unique(trainY))
-    # classifier = MyClassifier(K)
-    # classifier.train(trainX, trainY)
-    # testAcc = classifier.evaluate(testX, testY)
-    # trainAcc = classifier.evaluate(trainX, trainY)
-    # print(f'Training Accuracy: {trainAcc:.4f}')
-    # print(f'Test Accuracy: {testAcc:.4f}')
+    data = prepare_mnist_data()
+    trainX, trainY, testX, testY = data['trainX'], data['trainY'], data['testX'], data['testY']
+    print(trainX.shape, trainY.shape, testX.shape, testY.shape)
+    K = len(np.unique(trainY))
+    selection = MyLabelSelection(0.5, trainX, trainY, method='random')
+
+    _trainX, _trainY  = selection.real_data()
 
 
-    result2 = {'synthetic':{'K':[3, 5, 10], 'clustering_nmi':[0.6,0.6,0.6], 'classification_accuracy':[0.8,0.8,0.8]},
-                'mnist':{'K':[3, 10, 32], 'clustering_nmi':[0.5,0.5,0.5], 'classification_accuracy':[0.7,0.7,0.7]}}
-    syn_data = prepare_synthetic_data()
-    trainX, trainY, testX, testY = syn_data['trainX'], syn_data['trainY'], syn_data['testX'], syn_data['testY']
-    
-    for i in range(3):
-        k = result2['synthetic']['K'][i]
-        synClustering = MyClustering(k)
-        synClustering.train(trainX)
-        result2['synthetic']['clustering_nmi'][i] = synClustering.evaluate_clustering(trainY)
-        result2['synthetic']['classification_accuracy'][i] = synClustering.evaluate_classification(trainY, testX, testY)
+    classifier = MyClassifier(K)
+    classifier.train(_trainX, _trainY)
+    testAcc = classifier.evaluate(testX, testY)
+    trainAcc = classifier.evaluate(trainX, trainY)
+    print(f'Training Accuracy: {trainAcc:.4f}')
+    print(f'Test Accuracy: {testAcc:.4f}')
 
 
-    mnist_data = prepare_mnist_data()
-    trainX, trainY, testX, testY = mnist_data['trainX'], mnist_data['trainY'], mnist_data['testX'], mnist_data['testY']
-    for i in range(3):
-        k = result2['mnist']['K'][i]
-        mnistClustering = MyClustering(k)
-        mnistClustering.train(trainX)
-        result2['mnist']['clustering_nmi'][i] = mnistClustering.evaluate_clustering(trainY)
-        result2['mnist']['classification_accuracy'][i] = mnistClustering.evaluate_classification(trainY, testX, testY)
-
-    print(result2)
 if __name__ == '__main__':
     main()
